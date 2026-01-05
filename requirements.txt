@@ -1,0 +1,11 @@
+selenium==4.16.0
+beautifulsoup4==4.12.3
+lxml==5.1.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-dateutil==2.8.2
+structlog==24.1.0
+pandas==2.1.4
+tenacity==8.2.3
+click==8.1.7
+rich==13.7.0
