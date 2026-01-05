@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     page_load_timeout: int = 30
     element_wait_timeout: int = 10
     chrome_headless: bool = True
-    chrome_binary_location: str = "/usr/bin/chromium"
+    chrome_binary_location: str = "/usr/bin/chromium-browser"
     chromedriver_path: str = "/usr/bin/chromedriver"
 
     # Output settings
