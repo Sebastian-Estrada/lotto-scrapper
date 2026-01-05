@@ -328,16 +328,6 @@ class OLGBrowserClient:
                     pass
                 return False
 
-            # Capture reference to play-content BEFORE submitting
-            # This will be used to detect when content updates
-            old_content_element = None
-            try:
-                play_content = self.driver.find_element(By.CLASS_NAME, "play-content")
-                old_content_element = play_content.find_element(By.CSS_SELECTOR, ".ball-list, div, p")
-                logger.info("captured_content_reference_before_submit")
-            except NoSuchElementException:
-                logger.warning("could_not_capture_content_reference")
-
             # Click the apply/submit button
             # Button ID: winning-numbers-calendar-picker-submit
             submit_selectors = [
@@ -366,18 +356,18 @@ class OLGBrowserClient:
                     logger.info("calendar_picker_submitted", date=date_str, selector=selector)
 
                     # Wait for the .play-content div to update
-                    if old_content_element:
-                        try:
-                            # Wait for the old element to become stale (content updated)
-                            WebDriverWait(self.driver, 15).until(EC.staleness_of(old_content_element))
-                            logger.info("play_content_updated_detected")
-                            time.sleep(2)  # Additional time for rendering
-                        except TimeoutException:
-                            logger.warning("play_content_did_not_update", timeout=15)
-                            time.sleep(3)  # Fallback wait
-                    else:
-                        # Fallback if we couldn't capture reference
-                        time.sleep(5)
+                    logger.info("waiting_for_page_to_update_with_new_date", target_date=date_str)
+
+                    # Longer wait for AJAX to complete and page to render
+                    time.sleep(10)
+
+                    # Verify the input field shows the correct date
+                    try:
+                        date_input = self.driver.find_element(By.ID, "winning-numbers-calendar-picker-startDate")
+                        input_value = date_input.get_attribute("value")
+                        logger.info("verified_datepicker_input", value=input_value, expected=date_str)
+                    except Exception as e:
+                        logger.warning("could_not_verify_input", error=str(e))
 
                     submit_clicked = True
                     break
