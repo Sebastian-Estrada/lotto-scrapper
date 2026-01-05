@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  lotto-scraper:
+    build: .
+    container_name: olg-lotto-scraper
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TARGET_URL=${TARGET_URL:-https://www.olg.ca/en/lottery/play-lotto-max-encore/past-results.html}
+      - OUTPUT_FORMAT=${OUTPUT_FORMAT:-both}
+      - DATE_RANGE=${DATE_RANGE:-last_30_days}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CHROME_HEADLESS=${CHROME_HEADLESS:-true}
+      - PAGE_LOAD_TIMEOUT=${PAGE_LOAD_TIMEOUT:-30}
+      - ELEMENT_WAIT_TIMEOUT=${ELEMENT_WAIT_TIMEOUT:-10}
+    env_file:
+      - .env
