@@ -14,6 +14,54 @@
 .env
 .env.*
 
+# Claude
 CLAUDE.md
 claude-tasks
 claude-tasks/*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Data output
+data/json/*.json
+data/csv/*.csv
+# Keep the directories
+!data/json/.gitkeep
+!data/csv/.gitkeep
+
+# Logs
+*.log
+
+# OS
+Thumbs.db
