@@ -43,9 +43,10 @@ class LottoMaxParser:
         logger.info("starting_draw_parsing", target_date=target_date.strftime('%Y-%m-%d') if target_date else None)
 
         try:
-            # Find all winning numbers ball lists
-            # Class: "extra-bottom theme-default lotto-balls remove-default-styles ball-list not-daily-grand"
-            ball_lists = self.soup.find_all('ul', class_='ball-list')
+            # Find all winning numbers ball lists for Lotto Max
+            # Full classes: "extra-bottom theme-default lotto-balls remove-default-styles ball-list not-daily-grand"
+            # Use CSS selector to require ALL classes (not just any)
+            ball_lists = self.soup.select('ul.ball-list.lotto-balls.not-daily-grand')
 
             if not ball_lists:
                 logger.warning("no_ball_lists_found")
@@ -151,11 +152,6 @@ class LottoMaxParser:
                 except Exception as e:
                     logger.warning("failed_to_parse_draw_number", error=str(e))
 
-            # If we don't have draw_number, generate one from date
-            if not draw_number and draw_date:
-                # Use timestamp as draw number (temporary solution)
-                draw_number = int(draw_date.timestamp())
-
             # Extract winning numbers from regular balls (not special-ball)
             # Class: "ball-number" (but exclude those in "special-ball" li)
             winning_numbers = []
@@ -171,7 +167,7 @@ class LottoMaxParser:
                         winning_numbers.append(num)
                     except (ValueError, AttributeError) as e:
                         logger.warning("failed_to_parse_ball_number", text=ball_number_elem.text, error=str(e))
-
+            logger.info("extracted_winning_numbers", numbers=winning_numbers)
             # Extract bonus number from special-ball
             # Class: li with "special-ball", value in "ball-number"
             bonus_number = None
@@ -212,13 +208,9 @@ class LottoMaxParser:
 
             if not draw_date:
                 logger.warning("no_draw_date_found")
-                # Try to use current date as fallback
-                from datetime import datetime
-                draw_date = datetime.now()
 
             if not draw_number:
                 logger.warning("no_draw_number_found")
-                return None
 
             # Create and validate the draw object
             draw = LottoMaxDraw(
