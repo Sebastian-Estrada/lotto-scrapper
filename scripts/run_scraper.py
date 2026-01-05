@@ -3,6 +3,7 @@
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import List
 
 import click
 import structlog
@@ -15,7 +16,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.config.settings import settings
 from src.scraper.browser_client import OLGBrowserClient
 from src.scraper.parser import LottoMaxParser
-from src.scraper.models import ScraperMetadata
+from src.scraper.models import ScraperMetadata, LottoMaxDraw
+from src.scraper.date_generator import generate_draw_dates, generate_year_draw_dates
 from src.storage.json_writer import JSONWriter
 from src.storage.csv_writer import CSVWriter
 
@@ -64,14 +66,19 @@ def parse_date_range(date_range: str) -> tuple[datetime, datetime]:
 
 @click.command()
 @click.option(
-    '--start-date',
+    '--draw-date',
     type=str,
-    help='Start date in YYYY-MM-DD format'
+    help='Single draw date in YYYY-MM-DD format (e.g., 2025-01-03)'
 )
 @click.option(
-    '--end-date',
+    '--date-range',
     type=str,
-    help='End date in YYYY-MM-DD format'
+    help='Date range in YYYY-MM-DD:YYYY-MM-DD format (e.g., 2025-01-01:2025-01-31)'
+)
+@click.option(
+    '--year',
+    type=int,
+    help='Scrape all draws from a specific year (e.g., 2025)'
 )
 @click.option(
     '--format',
@@ -97,8 +104,9 @@ def parse_date_range(date_range: str) -> tuple[datetime, datetime]:
     help='Run Chrome in headless mode'
 )
 def main(
-    start_date: str,
-    end_date: str,
+    draw_date: str,
+    date_range: str,
+    year: int,
     output_format: str,
     log_level: str,
     dry_run: bool,
@@ -116,14 +124,39 @@ def main(
     console.print("[bold blue]OLG Lotto Max Scraper[/bold blue]")
     console.print("=" * 50)
 
-    # Determine date range
-    if start_date and end_date:
-        date_range_start = datetime.strptime(start_date, "%Y-%m-%d")
-        date_range_end = datetime.strptime(end_date, "%Y-%m-%d")
-        console.print(f"Date range: {start_date} to {end_date}")
+    # Determine which dates to scrape
+    draw_dates = []
+    date_range_start = None
+    date_range_end = None
+
+    if year:
+        # Scrape entire year
+        console.print(f"[cyan]Scraping all draws from year: {year}[/cyan]")
+        draw_dates = generate_year_draw_dates(year)
+        date_range_start = datetime(year, 1, 1)
+        date_range_end = datetime(year, 12, 31)
+    elif draw_date:
+        # Single draw date
+        single_date = datetime.strptime(draw_date, "%Y-%m-%d")
+        draw_dates = [single_date]
+        date_range_start = single_date
+        date_range_end = single_date
+        console.print(f"[cyan]Scraping single draw date: {draw_date}[/cyan]")
+    elif date_range:
+        # Custom date range
+        start_str, end_str = date_range.split(":")
+        date_range_start = datetime.strptime(start_str.strip(), "%Y-%m-%d")
+        date_range_end = datetime.strptime(end_str.strip(), "%Y-%m-%d")
+        draw_dates = generate_draw_dates(date_range_start, date_range_end)
+        console.print(f"[cyan]Date range: {start_str} to {end_str}[/cyan]")
     else:
+        # Use default - just scrape current results on page
         date_range_start, date_range_end = parse_date_range(settings.date_range)
+        console.print(f"[cyan]Scraping default results (no date iteration)[/cyan]")
         console.print(f"Date range: {settings.date_range}")
+
+    if draw_dates:
+        console.print(f"[green]Found {len(draw_dates)} draw dates (Tuesday/Friday)[/green]")
 
     console.print(f"Output format: {output_format}")
     if dry_run:
@@ -132,32 +165,66 @@ def main(
     console.print()
 
     try:
+        all_draws: List[LottoMaxDraw] = []
+
         # Initialize browser client
         console.print("[cyan]Initializing browser...[/cyan]")
         with OLGBrowserClient() as client:
-            # Load the page
+            # Load the page once
             console.print(f"[cyan]Loading page: {settings.target_url}[/cyan]")
             client.load_page()
+            client.scroll_to_results()
 
-            # TODO: Interact with date filters here
-            # This will need to be implemented based on actual page structure
-            # Example:
-            # client.click_element(By.ID, "date-filter-button")
-            # ...
+            if draw_dates:
+                # Loop through each draw date and scrape individually
+                console.print(f"\n[cyan]Starting date iteration for {len(draw_dates)} dates...[/cyan]\n")
 
-            # Get page source
-            console.print("[cyan]Extracting lottery data...[/cyan]")
-            html_content = client.get_page_source()
+                for idx, draw_date in enumerate(draw_dates, 1):
+                    date_str = draw_date.strftime('%Y-%m-%d')
+                    console.print(f"[{idx}/{len(draw_dates)}] Scraping {date_str}...", end=" ")
 
-            # Parse the HTML
-            parser = LottoMaxParser(html_content)
-            draws = parser.parse_draws()
+                    # Select the date in the datepicker
+                    # This now waits for .play-content to update before returning
+                    success = client.interact_with_datepicker(draw_date)
 
-            if not draws:
-                console.print("[yellow]No lottery draws found![/yellow]")
-                return
+                    if not success:
+                        console.print("[yellow]Failed[/yellow]")
+                        continue
 
-            console.print(f"[green]Found {len(draws)} lottery draws[/green]")
+                    # Wait for results table to be visible
+                    client.wait_for_results_table(timeout=10)
+
+                    # Extract the results for this date
+                    html_content = client.get_page_source()
+                    parser = LottoMaxParser(html_content)
+                    date_draws = parser.parse_draws(target_date=draw_date)
+
+                    if date_draws:
+                        all_draws.extend(date_draws)
+                        console.print(f"[green]✓ Found {len(date_draws)} draw(s)[/green]")
+                    else:
+                        console.print("[dim]No results[/dim]")
+
+                    # Small delay to be polite to the server
+                    import time
+                    time.sleep(0.5)
+
+                draws = all_draws
+                console.print(f"\n[green]Total draws collected: {len(draws)}[/green]\n")
+
+            else:
+                # Default behavior - scrape what's on the page
+                console.print("[cyan]Extracting lottery data from current page...[/cyan]")
+                client.wait_for_results_table(timeout=20)
+                html_content = client.get_page_source()
+                parser = LottoMaxParser(html_content)
+                draws = parser.parse_draws()
+
+                if not draws:
+                    console.print("[yellow]No lottery draws found![/yellow]")
+                    return
+
+                console.print(f"[green]Found {len(draws)} lottery draws[/green]")
 
             # Display summary table
             table = Table(title="Scraped Draws Summary")
@@ -183,8 +250,8 @@ def main(
             # Create metadata
             metadata = ScraperMetadata(
                 total_draws=len(draws),
-                date_range_start=date_range_start,
-                date_range_end=date_range_end
+                date_range_start=date_range_start or datetime.now(),
+                date_range_end=date_range_end or datetime.now()
             )
 
             # Write output files
