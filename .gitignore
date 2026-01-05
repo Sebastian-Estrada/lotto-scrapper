@@ -1,0 +1,19 @@
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Backup files
+*.backup
+*.bak
+
+# Environment files
+.env
+.env.*
+
+CLAUDE.md
+claude-tasks
+claude-tasks/*
