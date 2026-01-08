@@ -57,7 +57,7 @@ class LottoMaxParser:
             # Each ball list represents one draw
             for ball_list in ball_lists:
                 try:
-                    draw = self._parse_single_draw(ball_list)
+                    draw = self._parse_single_draw(ball_list, target_date)
                     if draw:
                         draws.append(draw)
                 except Exception as e:
@@ -92,65 +92,26 @@ class LottoMaxParser:
             logger.error("draw_parsing_failed", error=str(e))
             raise
 
-    def _parse_single_draw(self, ball_list) -> Optional[LottoMaxDraw]:
+    def _parse_single_draw(self, ball_list, target_date: Optional[datetime] = None) -> Optional[LottoMaxDraw]:
         """
         Parse a single draw from a ball list element.
 
         Args:
             ball_list: BeautifulSoup ul element with class 'ball-list'
+            target_date: The date we requested (from datepicker) - use this instead of parsing
 
         Returns:
             LottoMaxDraw object or None if parsing fails
         """
         try:
-            # Find the parent container to get draw date and number
-            # Navigate up to find the draw information
-            draw_container = ball_list.find_parent()
+            # Use the target_date we already know (from datepicker selection)
+            # No need to parse it from the page since we selected it
+            draw_date = target_date or datetime.now()
 
-            # Extract draw date - look for date in parent elements
-            draw_date = None
-            date_elem = None
+            # Generate draw_number from the date (timestamp)
+            draw_number = int(draw_date.timestamp())
 
-            # Try to find date in siblings or parent elements
-            for parent in [ball_list.parent, ball_list.parent.parent if ball_list.parent else None]:
-                if parent:
-                    # Look for common date patterns
-                    date_elem = (
-                        parent.find('span', class_='draw-date') or
-                        parent.find('div', class_='date') or
-                        parent.find('time') or
-                        parent.find(class_=lambda x: x and 'date' in x.lower() if x else False)
-                    )
-                    if date_elem:
-                        break
-
-            if date_elem:
-                try:
-                    draw_date = self._parse_date(date_elem.text.strip())
-                except Exception as e:
-                    logger.warning("failed_to_parse_date", text=date_elem.text, error=str(e))
-
-            # Extract draw number - if available in the structure
-            draw_number = None
-            number_elem = None
-
-            for parent in [ball_list.parent, ball_list.parent.parent if ball_list.parent else None]:
-                if parent:
-                    number_elem = (
-                        parent.find('span', class_='draw-number') or
-                        parent.find(class_=lambda x: x and 'draw-number' in x.lower() if x else False) or
-                        parent.find(attrs={'data-draw-number': True})
-                    )
-                    if number_elem:
-                        break
-
-            if number_elem:
-                try:
-                    # Try to get from text or data attribute
-                    draw_number_text = number_elem.get('data-draw-number') or number_elem.text.strip()
-                    draw_number = int(''.join(filter(str.isdigit, draw_number_text)))
-                except Exception as e:
-                    logger.warning("failed_to_parse_draw_number", error=str(e))
+            logger.info("using_provided_date", date=draw_date.strftime('%Y-%m-%d'), draw_number=draw_number)
 
             # Extract winning numbers from regular balls (not special-ball)
             # Class: "ball-number" (but exclude those in "special-ball" li)
@@ -205,12 +166,6 @@ class LottoMaxParser:
             if not bonus_number:
                 logger.warning("no_bonus_number_found")
                 return None
-
-            if not draw_date:
-                logger.warning("no_draw_date_found")
-
-            if not draw_number:
-                logger.warning("no_draw_number_found")
 
             # Create and validate the draw object
             draw = LottoMaxDraw(
