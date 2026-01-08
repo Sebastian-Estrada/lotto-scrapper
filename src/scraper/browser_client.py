@@ -359,7 +359,7 @@ class OLGBrowserClient:
                     logger.info("waiting_for_page_to_update_with_new_date", target_date=date_str)
 
                     # Longer wait for AJAX to complete and page to render
-                    time.sleep(10)
+                    time.sleep(3)
 
                     # Verify the input field shows the correct date
                     try:
